@@ -10,7 +10,7 @@
     "build:android": "cd mobile && eas build --platform android",
     "api:build": "cd api && npm run build",
     "api:start": "cd api && npm start",
-    "db:migrate": "cd api && npm run migrate",
+    "deploy": "firebase deploy",
     "setup": "npm install && cd mobile && npm install && cd ../api && npm install",
     "test": "cd api && npm test"
   },

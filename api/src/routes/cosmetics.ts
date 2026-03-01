@@ -3,8 +3,8 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { v4 as uuidv4 } from 'uuid';
-import { query } from '../db/connection';
+import * as admin from 'firebase-admin';
+import { getDb } from '../db/connection';
 import { createApiError } from '../middleware/errorHandler';
 
 const router = Router();
@@ -15,20 +15,24 @@ const router = Router();
  */
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await query(
-      `SELECT id, type, name, description, cost_coins as costCoins, image_url as imageUrl
-       FROM cosmetics
-       ORDER BY type ASC, name ASC`
-    );
+    const db = getDb();
 
-    const cosmetics = result.rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      name: row.name,
-      description: row.description,
-      costCoins: row.costcoins,
-      imageUrl: row.imageurl,
-    }));
+    const snapshot = await db.collection('cosmetics')
+      .orderBy('type')
+      .orderBy('name')
+      .get();
+
+    const cosmetics = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        type: data.type,
+        name: data.name,
+        description: data.description,
+        costCoins: data.costCoins,
+        imageUrl: data.imageUrl,
+      };
+    });
 
     res.json(cosmetics);
   } catch (error) {
@@ -49,69 +53,64 @@ router.post('/buy', async (req: Request, res: Response, next: NextFunction) => {
       throw createApiError('Missing cosmeticId', 400);
     }
 
-    // Get cosmetic details
-    const cosmeticResult = await query(
-      'SELECT id, cost_coins as costCoins FROM cosmetics WHERE id = $1',
-      [cosmeticId]
-    );
+    const db = getDb();
 
-    if (cosmeticResult.rows.length === 0) {
+    // Get cosmetic details
+    const cosmeticDoc = await db.collection('cosmetics').doc(cosmeticId).get();
+
+    if (!cosmeticDoc.exists) {
       throw createApiError('Cosmetic not found', 404);
     }
 
-    const cosmetic = cosmeticResult.rows[0];
-    const cost = cosmetic.costcoins;
+    const cosmetic = cosmeticDoc.data()!;
+    const cost = cosmetic.costCoins;
 
-    // Check user balance
-    const userResult = await query(
-      'SELECT coins FROM users WHERE id = $1',
-      [userId]
-    );
+    // Get user - find by firebaseId since userId from auth is firebase uid
+    const usersSnapshot = await db.collection('users')
+      .where('firebaseId', '==', userId)
+      .limit(1)
+      .get();
 
-    if (userResult.rows.length === 0) {
+    if (usersSnapshot.empty) {
       throw createApiError('User not found', 404);
     }
 
-    const userCoins = userResult.rows[0].coins;
+    const userDoc = usersSnapshot.docs[0];
+    const userData = userDoc.data();
 
-    if (userCoins < cost) {
+    if (userData.coins < cost) {
       throw createApiError('Insufficient coins', 400);
     }
 
     // Check if already owned
-    const ownedResult = await query(
-      'SELECT id FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2',
-      [userId, cosmeticId]
-    );
+    const ownedSnapshot = await db.collection('user_cosmetics')
+      .where('userId', '==', userDoc.id)
+      .where('cosmeticId', '==', cosmeticId)
+      .limit(1)
+      .get();
 
-    if (ownedResult.rows.length > 0) {
+    if (!ownedSnapshot.empty) {
       throw createApiError('Already owned', 400);
     }
 
-    // Deduct coins and add cosmetic in transaction
-    await query('BEGIN');
+    // Use a batch to deduct coins and add cosmetic atomically
+    const batch = db.batch();
 
-    try {
-      // Deduct coins
-      await query(
-        'UPDATE users SET coins = coins - $1 WHERE id = $2',
-        [cost, userId]
-      );
+    batch.update(userDoc.ref, {
+      coins: admin.firestore.FieldValue.increment(-cost),
+    });
 
-      // Add cosmetic
-      await query(
-        `INSERT INTO user_cosmetics (id, user_id, cosmetic_id, is_equipped)
-         VALUES ($1, $2, $3, $4)`,
-        [uuidv4(), userId, cosmeticId, false]
-      );
+    const userCosmeticRef = db.collection('user_cosmetics').doc();
+    batch.set(userCosmeticRef, {
+      userId: userDoc.id,
+      cosmeticId,
+      isEquipped: false,
+      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-      await query('COMMIT');
+    await batch.commit();
 
-      res.json({ success: true, message: 'Purchase successful' });
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
-    }
+    res.json({ success: true, message: 'Purchase successful' });
   } catch (error) {
     next(error);
   }
@@ -125,40 +124,59 @@ router.post('/:cosmeticId/equip', async (req: Request, res: Response, next: Next
   try {
     const userId = req.userId;
     const { cosmeticId } = req.params;
+    const db = getDb();
+
+    // Find user doc by firebaseId
+    const usersSnapshot = await db.collection('users')
+      .where('firebaseId', '==', userId)
+      .limit(1)
+      .get();
+
+    if (usersSnapshot.empty) {
+      throw createApiError('User not found', 404);
+    }
+
+    const userDocId = usersSnapshot.docs[0].id;
 
     // Check ownership
-    const ownedResult = await query(
-      'SELECT id FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2',
-      [userId, cosmeticId]
-    );
+    const ownedSnapshot = await db.collection('user_cosmetics')
+      .where('userId', '==', userDocId)
+      .where('cosmeticId', '==', cosmeticId)
+      .limit(1)
+      .get();
 
-    if (ownedResult.rows.length === 0) {
+    if (ownedSnapshot.empty) {
       throw createApiError('Cosmetic not owned', 404);
     }
 
     // Get cosmetic type
-    const typeResult = await query(
-      'SELECT type FROM cosmetics WHERE id = $1',
-      [cosmeticId]
-    );
+    const cosmeticDoc = await db.collection('cosmetics').doc(cosmeticId).get();
+    const cosmeticType = cosmeticDoc.data()?.type;
 
-    const cosmeticType = typeResult.rows[0].type;
+    // Get all cosmetic IDs of the same type
+    const allCosmeticsOfType = await db.collection('cosmetics')
+      .where('type', '==', cosmeticType)
+      .get();
+    const cosmeticIdsOfType = allCosmeticsOfType.docs.map((d) => d.id);
 
-    // Unequip other cosmetics of same type
-    await query(
-      `UPDATE user_cosmetics uc
-       SET is_equipped = FALSE
-       WHERE uc.user_id = $1 
-       AND uc.id != (SELECT id FROM user_cosmetics WHERE user_id = $1 AND cosmetic_id = $2)
-       AND uc.cosmetic_id IN (SELECT id FROM cosmetics WHERE type = $3)`,
-      [userId, cosmeticId, cosmeticType]
-    );
+    // Find all user_cosmetics to unequip ones of the same type
+    const userCosmeticsSnapshot = await db.collection('user_cosmetics')
+      .where('userId', '==', userDocId)
+      .get();
 
-    // Equip this cosmetic
-    await query(
-      'UPDATE user_cosmetics SET is_equipped = TRUE WHERE user_id = $1 AND cosmetic_id = $2',
-      [userId, cosmeticId]
-    );
+    const batch = db.batch();
+
+    userCosmeticsSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      if (cosmeticIdsOfType.includes(data.cosmeticId) && data.cosmeticId !== cosmeticId) {
+        batch.update(doc.ref, { isEquipped: false });
+      }
+    });
+
+    // Equip the selected cosmetic
+    batch.update(ownedSnapshot.docs[0].ref, { isEquipped: true });
+
+    await batch.commit();
 
     res.json({ success: true, message: 'Cosmetic equipped' });
   } catch (error) {

@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { query } from '../db/connection';
+import { getDb } from '../db/connection';
 
 const router = Router();
 
@@ -14,34 +14,34 @@ const router = Router();
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
+    const db = getDb();
 
-    const result = await query(
-      `SELECT 
-        ROW_NUMBER() OVER (ORDER BY rating DESC) as rank,
-        id as userId,
-        username,
-        rating,
-        wins,
-        losses,
-        CASE 
-          WHEN (wins + losses) = 0 THEN 0 
-          ELSE CAST(wins AS FLOAT) / (wins + losses) 
-        END as winRate
-       FROM users
-       WHERE wins > 0 OR losses > 0
-       ORDER BY rating DESC
-       LIMIT $1`,
-      [limit]
-    );
+    const snapshot = await db.collection('users')
+      .orderBy('rating', 'desc')
+      .limit(limit)
+      .get();
 
-    const leaderboard = result.rows.map((row) => ({
-      rank: row.rank,
-      userId: row.userid,
-      username: row.username,
-      rating: row.rating,
-      wins: row.wins,
-      winRate: Math.round(row.winrate * 100) / 100,
-    }));
+    let rank = 0;
+    const leaderboard = snapshot.docs
+      .filter((doc) => {
+        const data = doc.data();
+        return data.wins > 0 || data.losses > 0;
+      })
+      .map((doc) => {
+        rank++;
+        const data = doc.data();
+        const totalGames = data.wins + data.losses;
+        return {
+          rank,
+          userId: doc.id,
+          username: data.username,
+          rating: data.rating,
+          wins: data.wins,
+          winRate: totalGames > 0
+            ? Math.round((data.wins / totalGames) * 100) / 100
+            : 0,
+        };
+      });
 
     res.json(leaderboard);
   } catch (error) {
@@ -56,32 +56,45 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 router.get('/weekly', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
+    const db = getDb();
 
-    const result = await query(
-      `SELECT 
-        ROW_NUMBER() OVER (ORDER BY week_wins DESC) as rank,
-        u.id as userId,
-        u.username,
-        u.rating,
-        COUNT(*) as week_wins,
-        0 as losses
-       FROM users u
-       LEFT JOIN matches m ON (u.id = m.winner_id AND m.created_at > NOW() - INTERVAL '7 days')
-       GROUP BY u.id, u.username, u.rating
-       HAVING COUNT(*) > 0
-       ORDER BY week_wins DESC
-       LIMIT $1`,
-      [limit]
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+    // Get matches from the last 7 days
+    const matchesSnapshot = await db.collection('matches')
+      .where('createdAt', '>=', oneWeekAgo)
+      .get();
+
+    // Count wins per user
+    const winCounts: Record<string, number> = {};
+    matchesSnapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      if (data.winnerId) {
+        winCounts[data.winnerId] = (winCounts[data.winnerId] || 0) + 1;
+      }
+    });
+
+    // Sort by wins and take top entries
+    const sortedUserIds = Object.entries(winCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, limit);
+
+    // Fetch user details for top winners
+    const leaderboard = await Promise.all(
+      sortedUserIds.map(async ([userId, wins], index) => {
+        const userDoc = await db.collection('users').doc(userId).get();
+        const userData = userDoc.data();
+        return {
+          rank: index + 1,
+          userId,
+          username: userData?.username || 'Unknown',
+          rating: userData?.rating || 0,
+          wins,
+          winRate: 1.0,
+        };
+      })
     );
-
-    const leaderboard = result.rows.map((row) => ({
-      rank: row.rank,
-      userId: row.userid,
-      username: row.username,
-      rating: row.rating,
-      wins: row.week_wins,
-      winRate: 1.0,
-    }));
 
     res.json(leaderboard);
   } catch (error) {

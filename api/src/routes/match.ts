@@ -4,7 +4,8 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import { query } from '../db/connection';
+import * as admin from 'firebase-admin';
+import { getDb } from '../db/connection';
 import { createApiError } from '../middleware/errorHandler';
 import { getDatabase } from '../services/firebaseAdminInit';
 
@@ -27,23 +28,26 @@ const MATCHMAKING_TIMEOUT = parseInt(process.env.MATCHMAKING_TIMEOUT || '30') * 
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.userId;
+    const db = getDb();
 
-    // Get user rating
-    const userResult = await query(
-      'SELECT rating FROM users WHERE id = $1',
-      [userId]
-    );
+    // Get user rating - find by firebaseId
+    const usersSnapshot = await db.collection('users')
+      .where('firebaseId', '==', userId)
+      .limit(1)
+      .get();
 
-    if (userResult.rows.length === 0) {
+    if (usersSnapshot.empty) {
       throw createApiError('User not found', 404);
     }
 
-    const userRating = userResult.rows[0].rating;
+    const userDoc = usersSnapshot.docs[0];
+    const userRating = userDoc.data().rating;
+    const userDocId = userDoc.id;
 
     // Find matching opponent
     const matchedIndex = matchmakingQueue.findIndex((entry) => {
-      const ratingDiff = Math.abs(entry.userId !== userId ? entry.rating - userRating : 2000);
-      return ratingDiff < 200 && entry.userId !== userId;
+      const ratingDiff = Math.abs(entry.userId !== userDocId ? entry.rating - userRating : 2000);
+      return ratingDiff < 200 && entry.userId !== userDocId;
     });
 
     if (matchedIndex >= 0) {
@@ -51,19 +55,24 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
       const opponent = matchmakingQueue.splice(matchedIndex, 1)[0];
       const matchId = uuidv4();
 
-      // Create match record in database
-      await query(
-        `INSERT INTO matches (id, player1_id, player2_id)
-         VALUES ($1, $2, $3)`,
-        [matchId, userId, opponent.userId]
-      );
+      // Create match record in Firestore
+      await db.collection('matches').doc(matchId).set({
+        player1Id: userDocId,
+        player2Id: opponent.userId,
+        winnerId: null,
+        durationSeconds: null,
+        player1Score: 0,
+        player2Score: 0,
+        matchData: null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-      // Create Firebase match entry
-      const db = getDatabase();
-      await db.ref(`matches/${matchId}`).set({
+      // Create Firebase Realtime Database match entry for real-time sync
+      const rtdb = getDatabase();
+      await rtdb.ref(`matches/${matchId}`).set({
         players: {
           p1: {
-            id: userId,
+            id: userDocId,
             x: 200,
             y: 300,
             hp: 100,
@@ -90,7 +99,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     } else {
       // Add to queue
       const queueEntry: QueueEntry = {
-        userId,
+        userId: userDocId,
         rating: userRating,
         timestamp: Date.now(),
       };
@@ -99,7 +108,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
       // Remove after timeout
       setTimeout(() => {
-        const index = matchmakingQueue.findIndex((e) => e.userId === userId);
+        const index = matchmakingQueue.findIndex((e) => e.userId === userDocId);
         if (index >= 0) {
           matchmakingQueue.splice(index, 1);
         }
@@ -114,35 +123,31 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 
 /**
  * GET /match/:id
- * Get match state (fallback if Firebase is down)
+ * Get match state (fallback if Firebase RTDB is down)
  */
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const db = getDb();
 
-    const result = await query(
-      `SELECT id, player1_id, player2_id, winner_id, duration_seconds, 
-              player1_score, player2_score, match_data, created_at
-       FROM matches WHERE id = $1`,
-      [id]
-    );
+    const doc = await db.collection('matches').doc(id).get();
 
-    if (result.rows.length === 0) {
+    if (!doc.exists) {
       throw createApiError('Match not found', 404);
     }
 
-    const match = result.rows[0];
+    const match = doc.data()!;
 
     res.json({
-      id: match.id,
-      player1Id: match.player1_id,
-      player2Id: match.player2_id,
-      winnerId: match.winner_id,
-      duration: match.duration_seconds,
-      player1Score: match.player1_score,
-      player2Score: match.player2_score,
-      matchData: match.match_data,
-      createdAt: match.created_at,
+      id: doc.id,
+      player1Id: match.player1Id,
+      player2Id: match.player2Id,
+      winnerId: match.winnerId,
+      duration: match.durationSeconds,
+      player1Score: match.player1Score,
+      player2Score: match.player2Score,
+      matchData: match.matchData,
+      createdAt: match.createdAt?.toMillis?.() || match.createdAt,
     });
   } catch (error) {
     next(error);
@@ -162,28 +167,26 @@ router.post('/:id/end', async (req: Request, res: Response, next: NextFunction) 
       throw createApiError('Missing winnerId', 400);
     }
 
-    // Get match details
-    const matchResult = await query(
-      'SELECT player1_id, player2_id FROM matches WHERE id = $1',
-      [id]
-    );
+    const db = getDb();
 
-    if (matchResult.rows.length === 0) {
+    // Get match details
+    const matchDoc = await db.collection('matches').doc(id).get();
+
+    if (!matchDoc.exists) {
       throw createApiError('Match not found', 404);
     }
 
-    const match = matchResult.rows[0];
-    const loserIdId = winnerId === match.player1_id ? match.player2_id : match.player1_id;
+    const match = matchDoc.data()!;
+    const loserId = winnerId === match.player1Id ? match.player2Id : match.player1Id;
 
     // Calculate ELO changes
     const K = parseInt(process.env.ELO_K_FACTOR || '32');
-    const baseRating = parseInt(process.env.ELO_BASE_RATING || '1000');
 
-    const winnerResult = await query('SELECT rating FROM users WHERE id = $1', [winnerId]);
-    const loserResult = await query('SELECT rating FROM users WHERE id = $1', [loserIdId]);
+    const winnerDoc = await db.collection('users').doc(winnerId).get();
+    const loserDoc = await db.collection('users').doc(loserId).get();
 
-    const winnerRating = winnerResult.rows[0].rating;
-    const loserRating = loserResult.rows[0].rating;
+    const winnerRating = winnerDoc.data()?.rating || 1000;
+    const loserRating = loserDoc.data()?.rating || 1000;
 
     const expectedWinner = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400));
     const expectedLoser = 1 / (1 + Math.pow(10, (winnerRating - loserRating) / 400));
@@ -191,28 +194,30 @@ router.post('/:id/end', async (req: Request, res: Response, next: NextFunction) 
     const winnerDelta = Math.round(K * (1 - expectedWinner));
     const loserDelta = Math.round(K * (0 - expectedLoser));
 
+    // Use a batch to update everything atomically
+    const batch = db.batch();
+
     // Update match record
-    await query(
-      `UPDATE matches
-       SET winner_id = $1, duration_seconds = $2, player1_score = $3, player2_score = $4
-       WHERE id = $5`,
-      [winnerId, duration, player1Score, player2Score, id]
-    );
+    batch.update(matchDoc.ref, {
+      winnerId,
+      durationSeconds: duration,
+      player1Score,
+      player2Score,
+    });
 
-    // Update both players' stats
-    await query(
-      `UPDATE users
-       SET wins = wins + 1, rating = rating + $1
-       WHERE id = $2`,
-      [winnerDelta, winnerId]
-    );
+    // Update winner stats
+    batch.update(winnerDoc.ref, {
+      wins: admin.firestore.FieldValue.increment(1),
+      rating: admin.firestore.FieldValue.increment(winnerDelta),
+    });
 
-    await query(
-      `UPDATE users
-       SET losses = losses + 1, rating = rating + $1
-       WHERE id = $2`,
-      [loserDelta, loserIdId]
-    );
+    // Update loser stats
+    batch.update(loserDoc.ref, {
+      losses: admin.firestore.FieldValue.increment(1),
+      rating: admin.firestore.FieldValue.increment(loserDelta),
+    });
+
+    await batch.commit();
 
     res.json({
       success: true,
@@ -221,7 +226,7 @@ router.post('/:id/end', async (req: Request, res: Response, next: NextFunction) 
         ratingDelta: winnerDelta,
       },
       loser: {
-        userId: loserIdId,
+        userId: loserId,
         ratingDelta: loserDelta,
       },
     });
