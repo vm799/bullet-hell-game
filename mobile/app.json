@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "Bullet Hell",
+    "slug": "bullet-hell-game",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "bullethell",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "android": {
+      "package": "com.bullethell.game",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1a1a2e"
+      },
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE"
+      ]
+    },
+    "ios": {
+      "bundleIdentifier": "com.bullethell.game",
+      "buildNumber": "1",
+      "supportsTabletMode": true,
+      "requiresFullScreen": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "This app uses local network for multiplayer features",
+        "NSBonjourServiceTypes": ["_http._tcp"]
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-font",
+        {
+          "fonts": []
+        }
+      ]
+    ],
+    "extra": {
+      "apiUrl": "https://api.bullethell.game",
+      "firebaseConfig": {
+        "apiKey": "YOUR_FIREBASE_API_KEY",
+        "authDomain": "bullet-hell-game.firebaseapp.com",
+        "projectId": "bullet-hell-game",
+        "storageBucket": "bullet-hell-game.appspot.com",
+        "messagingSenderId": "YOUR_MESSAGING_SENDER_ID",
+        "appId": "YOUR_APP_ID"
+      }
+    }
+  }
+}

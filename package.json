@@ -1,0 +1,30 @@
+{
+  "name": "bullet-hell-game",
+  "version": "1.0.0",
+  "description": "Multiplayer PvP Bullet Hell game for iOS and Android",
+  "main": "index.js",
+  "scripts": {
+    "mobile": "cd mobile && npm install && npm start",
+    "api": "cd api && npm install && npm run dev",
+    "build:ios": "cd mobile && eas build --platform ios",
+    "build:android": "cd mobile && eas build --platform android",
+    "api:build": "cd api && npm run build",
+    "api:start": "cd api && npm start",
+    "db:migrate": "cd api && npm run migrate",
+    "setup": "npm install && cd mobile && npm install && cd ../api && npm install",
+    "test": "cd api && npm test"
+  },
+  "keywords": [
+    "game",
+    "bullet-hell",
+    "pvp",
+    "react-native",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "workspaces": [
+    "mobile",
+    "api"
+  ]
+}
