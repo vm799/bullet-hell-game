@@ -4,13 +4,14 @@ Complete guide to set up Bullet Hell development environment.
 
 ## Prerequisites
 
-- Node.js 16.0+ ([download](https://nodejs.org))
+- Node.js 20+ ([download](https://nodejs.org))
 - npm 8+ or yarn
-- PostgreSQL 12+ ([download](https://www.postgresql.org))
 - Git
 - Firebase account ([create](https://console.firebase.google.com))
 - Expo CLI: `npm install -g expo-cli`
-- macOS users: Xcode Command Line Tools
+- macOS users: Xcode Command Line Tools (for iOS simulator)
+
+> **Note:** This project uses Firebase Firestore as its database. No PostgreSQL or other SQL database is required.
 
 ## 1. Firebase Setup
 
@@ -18,9 +19,18 @@ Complete guide to set up Bullet Hell development environment.
 
 1. Go to [Firebase Console](https://console.firebase.google.com)
 2. Click "Add project"
-3. Name it "bullet-hell-game"
-4. Enable Google Analytics
-5. Click "Create project"
+3. Name it "bullet-hell-game" (or your preferred name)
+4. Click "Create project"
+
+### Enable Firestore
+
+1. Go to "Firestore Database"
+2. Click "Create database"
+3. Select region (closest to your users)
+4. Start in **Test Mode** (for development)
+5. Click "Enable"
+
+Cosmetics data is auto-seeded on first API start.
 
 ### Enable Realtime Database
 
@@ -29,6 +39,8 @@ Complete guide to set up Bullet Hell development environment.
 3. Select region (closest to your location)
 4. Start in **Test Mode** (for development)
 5. Click "Enable"
+
+Production rules (paste in Rules tab):
 
 ```json
 {
@@ -51,105 +63,52 @@ Complete guide to set up Bullet Hell development environment.
 3. Enable "Email/Password"
 4. Enable "Anonymous"
 
-### Get Firebase Credentials
+### Get Firebase Admin Credentials (for the API server)
 
 1. Go to Project Settings (gear icon)
 2. Click "Service Accounts"
 3. Click "Generate New Private Key"
-4. Save as `api/firebase-admin-key.json`
+4. Download the JSON file
+5. Copy the values into your `api/.env` file (see Step 3 below)
 
-Or use environment variables:
-1. Go to Project Settings
-2. Copy values for these fields:
-   - Project ID
-   - Private Key ID
-   - Private Key
-   - Client Email
-   - Client ID
+### Get Firebase Web Config (for the mobile app)
 
-## 2. Database Setup
+1. Go to Project Settings (gear icon)
+2. Scroll to "Your apps" > click the Web icon (`</>`)
+3. Register an app (name: "bullet-hell-mobile")
+4. Copy the `firebaseConfig` object for use in Step 3
 
-### Install PostgreSQL
-
-**macOS with Homebrew:**
-```bash
-brew install postgresql
-brew services start postgresql
-```
-
-**Windows:**
-- Download from [postgresql.org](https://www.postgresql.org/download/windows/)
-- Run installer, remember the password
-
-**Linux (Ubuntu):**
-```bash
-sudo apt-get install postgresql postgresql-contrib
-sudo service postgresql start
-```
-
-### Create Database
+## 2. Install Dependencies
 
 ```bash
-# Connect to PostgreSQL
-psql -U postgres
-
-# In psql:
-CREATE DATABASE bullet_hell;
-CREATE USER bullet_user WITH PASSWORD 'secure_password';
-GRANT ALL PRIVILEGES ON DATABASE bullet_hell TO bullet_user;
-\q
-```
-
-## 3. Project Setup
-
-### Clone Repository
-
-```bash
-git clone https://github.com/yourusername/bullet-hell-game.git
+git clone <your-repo-url>
 cd bullet-hell-game
-```
-
-### Install Dependencies
-
-```bash
 npm run setup
 ```
 
-This installs dependencies for:
-- Root project
-- Mobile app
-- Backend API
+This installs dependencies for the root project, mobile app, and backend API.
 
-### Configure Environment
+## 3. Configure Environment
 
-**API Configuration:**
+### API Configuration
 
 ```bash
 cp api/.env.example api/.env
 ```
 
-Edit `api/.env`:
+Edit `api/.env` with your Firebase Admin credentials:
 
-```
+```env
 NODE_ENV=development
 PORT=3000
 API_URL=http://localhost:3000
 
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=bullet_hell
-DB_USER=bullet_user
-DB_PASSWORD=secure_password
-
-# Firebase
-FIREBASE_PROJECT_ID=bullet-hell-game
-FIREBASE_PRIVATE_KEY_ID=your_key_id
+# Firebase (from the service account JSON you downloaded)
+FIREBASE_PROJECT_ID=your-project-id
+FIREBASE_PRIVATE_KEY_ID=your_private_key_id
 FIREBASE_PRIVATE_KEY=-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@bullet-hell-game.iam.gserviceaccount.com
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com
 FIREBASE_CLIENT_ID=your_client_id
-FIREBASE_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-FIREBASE_TOKEN_URI=https://oauth2.googleapis.com/token
 
 # Game Settings
 MATCH_DURATION=300
@@ -169,18 +128,20 @@ RATE_LIMIT_LOGIN_MAX=10
 RATE_LIMIT_API_MAX=100
 ```
 
-**Mobile Firebase Config:**
+### Mobile Firebase Config
 
-Edit `mobile/app.json` and add your Firebase config:
+Edit `mobile/app.json` and replace the placeholder values in `extra.firebaseConfig`:
 
 ```json
 {
   "extra": {
+    "apiUrl": "http://localhost:3000",
     "firebaseConfig": {
       "apiKey": "YOUR_API_KEY",
-      "authDomain": "bullet-hell-game.firebaseapp.com",
-      "projectId": "bullet-hell-game",
-      "storageBucket": "bullet-hell-game.appspot.com",
+      "authDomain": "your-project.firebaseapp.com",
+      "databaseURL": "https://your-project.firebaseio.com",
+      "projectId": "your-project-id",
+      "storageBucket": "your-project.appspot.com",
       "messagingSenderId": "YOUR_SENDER_ID",
       "appId": "YOUR_APP_ID"
     }
@@ -188,125 +149,58 @@ Edit `mobile/app.json` and add your Firebase config:
 }
 ```
 
-## 4. Database Migrations
+## 4. Start Development
 
-Run migrations to create tables:
+### Terminal 1 - Backend API
 
-```bash
-npm run db:migrate
-```
-
-This will:
-- Create `migrations` table
-- Create `users` table
-- Create `matches` table
-- Create `cosmetics` table
-- Create `user_cosmetics` table
-- Insert default cosmetics
-- Create indexes
-
-## 5. Start Development
-
-### Option A: Separate Terminals
-
-**Terminal 1 - Backend API:**
 ```bash
 npm run api
 ```
 
 Expected output:
 ```
-🚀 Server running on port 3000
-📍 Environment: development
-🔗 API URL: http://localhost:3000
+Initializing Firebase...
+Firebase Admin SDK initialized
+Initializing Firestore...
+Firestore initialized successfully
+Server running on port 3000
 ```
 
-**Terminal 2 - Mobile App:**
+### Terminal 2 - Mobile App
+
 ```bash
 npm run mobile
-```
-
-Expected output:
-```
-▄▀█ █▀█ █▀█   █▀▄ █▀▀ ▄▀█ █▀▄ █▄█
-█▀▄ █▀▀ █  ░ █   █░░ █▀█ █▀▄ █ █ 
 ```
 
 Then:
 - Press `i` for iOS simulator
 - Press `a` for Android emulator
 - Press `w` for web browser
-- Press `j` to open debugger
 
-### Option B: Watch Mode
-
-```bash
-# Root directory
-npm run dev
-```
-
-## 6. Test the Setup
+## 5. Verify Setup
 
 ### Test API
 
 ```bash
-# Health check
 curl http://localhost:3000/health
-
-# Should return:
-# {"status":"ok","timestamp":"2024-...","uptime":...}
-```
-
-### Test Database
-
-```bash
-# Connect and verify
-psql -U bullet_user -d bullet_hell
-
-# In psql:
-\dt  # List tables
-SELECT COUNT(*) FROM cosmetics;
-\q
+# Should return: {"status":"ok","timestamp":"...","uptime":...}
 ```
 
 ### Test Mobile App
 
-1. Open Expo app on your phone or use simulator
-2. Sign in / register
-3. Try:
-   - Viewing leaderboards
-   - Practice mode
-   - Profile page
-   - Shop page
+1. Open the app in Expo (simulator or device)
+2. Try Practice Mode (works without auth)
+3. Register an account to test online features
 
-## 7. Troubleshooting
-
-### PostgreSQL Connection Error
-
-```
-error: connect ECONNREFUSED 127.0.0.1:5432
-```
-
-**Fix:**
-```bash
-# Start PostgreSQL
-brew services start postgresql  # macOS
-sudo service postgresql start   # Linux
-
-# Or manually:
-pg_ctl -D /usr/local/var/postgres start
-```
+## 6. Troubleshooting
 
 ### Firebase Initialization Error
 
 ```
-Failed to initialize Firebase Admin SDK
+Failed to initialize Firebase Admin SDK: Missing Firebase credentials
 ```
 
-**Fix:**
-- Verify all env vars in api/.env
-- Check firebase-admin-key.json exists
-- Validate JSON formatting of private key
+**Fix:** Make sure all `FIREBASE_*` env vars are set in `api/.env`. Double check the private key has `\n` for newlines.
 
 ### Port Already in Use
 
@@ -316,68 +210,35 @@ listen EADDRINUSE: address already in use :::3000
 
 **Fix:**
 ```bash
-# Kill process on port 3000
 lsof -ti:3000 | xargs kill -9
-
 # Or use different port:
 PORT=3001 npm run api
+```
+
+### Firestore Permission Denied
+
+**Fix:** Make sure your Firestore rules are in test mode for development:
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
 ```
 
 ### Node Modules Issues
 
 ```bash
-# Clear cache and reinstall
 rm -rf node_modules package-lock.json
 npm install
 npm run setup
 ```
 
-## 8. Development Workflow
+## 7. Next Steps
 
-### Making Changes
-
-1. **Backend changes:**
-   - Edit files in `api/src/`
-   - API auto-reloads with ts-node watch mode
-   - Test with `curl` or Postman
-
-2. **Mobile changes:**
-   - Edit files in `mobile/src/`
-   - Hot reload on save
-   - Check Expo console for errors
-
-3. **Database changes:**
-   - Create new migration in `api/src/db/migrations/`
-   - Run `npm run db:migrate`
-
-### Git Workflow
-
-```bash
-git add .
-git commit -m "feat: add feature description"
-git push origin main
-```
-
-## 9. Next Steps
-
-Once everything is set up:
-
-1. Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the system design
-2. Read [GAMEPLAY.md](GAMEPLAY.md) to learn game mechanics
+1. Read [ARCHITECTURE.md](ARCHITECTURE.md) for system design
+2. Read [GAMEPLAY.md](GAMEPLAY.md) for game mechanics
 3. Check [DEPLOYMENT.md](DEPLOYMENT.md) for production setup
-4. Start developing!
-
-## 10. Production Deployment
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for:
-- Building for App Store
-- Building for Play Store
-- Deploying API
-- Configuring CI/CD
-- Scaling the backend
-
----
-
-**All set! Start coding! 🚀**
-
-Questions? Check GitHub Issues or contact the team.
