@@ -2,7 +2,7 @@
   "name": "bullet-hell-mobile",
   "version": "1.0.0",
   "description": "Bullet Hell mobile game",
-  "main": "src/App.tsx",
+  "main": "expo/AppEntry",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",

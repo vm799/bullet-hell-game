@@ -1,5 +1,6 @@
 {
   "expo": {
+    "entryPoint": "./src/App.tsx",
     "name": "Bullet Hell",
     "slug": "bullet-hell-game",
     "version": "1.0.0",
