@@ -3,13 +3,13 @@
  * Displays matchmaking queue status
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { apiClient } from '../services/apiClient';
 
 type MatchmakingScreenProps = {
-  navigation: NativeStackNavigationProp<any>;
+  navigation: StackNavigationProp<any>;
 };
 
 const MatchmakingScreen: React.FC<MatchmakingScreenProps> = ({

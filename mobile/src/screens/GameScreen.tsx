@@ -3,22 +3,20 @@
  * Main gameplay area with real-time PvP action
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
-  Canvas,
   TouchableOpacity,
   Text,
-  Dimensions,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { firebaseClient } from '../services/firebaseClient';
 import { gameEngine, DEFAULT_CONFIG } from '../services/gameEngine';
 import { GameState, InputState } from '../types';
 
 type GameScreenProps = {
-  navigation: NativeStackNavigationProp<any>;
+  navigation: StackNavigationProp<any>;
   route: any;
 };
 

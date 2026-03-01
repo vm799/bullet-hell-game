@@ -3,7 +3,7 @@
  * Main menu with play button and leaderboards
  */
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,12 @@ import {
   ScrollView,
   FlatList,
 } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { apiClient } from '../services/apiClient';
 import { LeaderboardEntry } from '../types';
 
 type HomeScreenProps = {
-  navigation: NativeStackNavigationProp<any>;
+  navigation: StackNavigationProp<any>;
 };
 
 const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {

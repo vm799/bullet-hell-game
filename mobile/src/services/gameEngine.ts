@@ -59,7 +59,6 @@ function normalizeAngle(angle: number): number {
 
 export class GameEngine {
   private config: GameConfig;
-  private lastUpdateTime: number = 0;
 
   constructor(config: Partial<GameConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
