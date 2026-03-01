@@ -2,7 +2,7 @@
   "name": "bullet-hell-game",
   "version": "1.0.0",
   "description": "Multiplayer PvP Bullet Hell game for iOS and Android",
-  "main": "index.js",
+  "private": true,
   "scripts": {
     "mobile": "cd mobile && npm install && npm start",
     "api": "cd api && npm install && npm run dev",
