@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "matches": {
+      "$matchId": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        "players": {
+          "$player": {
+            ".write": "auth != null"
+          }
+        },
+        "bullets": {
+          "$bulletId": {
+            ".write": "auth != null"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - read by anyone authenticated, write only via API
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only server (admin SDK) can write
+    }
+
+    // Matches collection - read by participants, write only via API
+    match /matches/{matchId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only server (admin SDK) can write
+    }
+
+    // Cosmetics collection - read by anyone authenticated
+    match /cosmetics/{cosmeticId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only server (admin SDK) can write
+    }
+
+    // User cosmetics - read by owner, write only via API
+    match /user_cosmetics/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only server (admin SDK) can write
+    }
+  }
+}
