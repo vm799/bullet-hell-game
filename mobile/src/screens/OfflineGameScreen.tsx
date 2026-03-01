@@ -3,14 +3,14 @@
  * Practice mode against AI opponent
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { gameEngine, DEFAULT_CONFIG } from '../services/gameEngine';
-import { GameState, Player, InputState } from '../types';
+import { GameState, InputState } from '../types';
 
 type OfflineGameScreenProps = {
-  navigation: NativeStackNavigationProp<any>;
+  navigation: StackNavigationProp<any>;
 };
 
 const OfflineGameScreen: React.FC<OfflineGameScreenProps> = ({
@@ -234,7 +234,7 @@ const OfflineGameScreen: React.FC<OfflineGameScreenProps> = ({
         </View>
 
         <View
-          style={[styles.playerInfoOverlay, { right: 10, textAlign: 'right' }]}
+          style={[styles.playerInfoOverlay, { right: 10, left: undefined, alignItems: 'flex-end' }]}
         >
           <Text style={styles.playerName}>
             {gameState.players.p2.username}

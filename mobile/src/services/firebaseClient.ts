@@ -21,7 +21,6 @@ import {
   signInAnonymously,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  AuthCredential,
 } from 'firebase/auth';
 import Constants from 'expo-constants';
 import { GameState, Player, Bullet } from '../types';
